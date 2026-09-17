@@ -3,7 +3,7 @@ package handlers
 import (
 	"fmt"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 
 	. "glauth-ui-light/config"
 	. "glauth-ui-light/helpers"
@@ -11,18 +11,18 @@ import (
 
 // Self user handlers
 
-func UserProfile(c *gin.Context) {
-	cfg := c.MustGet("Cfg").(WebConfig)
+func UserProfile(c echo.Context) error {
+	cfg := c.Get("Cfg").(WebConfig)
 	lang := cfg.Locale.Lang
-	id := c.Params.ByName("id")
+	id := c.Param("id")
 
-	if !isSelfAccess(c, "UserProfile", id) {
-		return
+	if ok, err := isSelfAccess(c, "UserProfile", id); !ok {
+		return err
 	}
 
-	k := ctlUserExist(c, lang, id)
+	k, err := ctlUserExist(c, lang, id)
 	if k < 0 {
-		return
+		return err
 	}
 
 	u := Data.Users[k]
@@ -44,27 +44,27 @@ func UserProfile(c *gin.Context) {
 		userf.CreateOTPimg(cfg.AppName)
 	}
 
-	render(c, gin.H{"title": u.Name, "u": userf, "currentPage": "profile", "groupdata": Data.Groups}, "user/profile.tmpl")
+	return render(c, echo.Map{"title": u.Name, "u": userf, "currentPage": "profile", "groupdata": Data.Groups}, "user/profile.tmpl")
 }
 
-func UserChgPasswd(c *gin.Context) {
-	cfg := c.MustGet("Cfg").(WebConfig)
+func UserChgPasswd(c echo.Context) error {
+	cfg := c.Get("Cfg").(WebConfig)
 	lang := cfg.Locale.Lang
-	id := c.Params.ByName("id")
+	id := c.Param("id")
 
 	// Ctrl access
-	if !isSelfAccess(c, "UserChgPasswd", id) {
-		return
+	if ok, err := isSelfAccess(c, "UserChgPasswd", id); !ok {
+		return err
 	}
 
-	k := ctlUserExist(c, lang, id)
+	k, kerr := ctlUserExist(c, lang, id)
 	if k < 0 {
-		return
+		return kerr
 	}
 
 	// Ctrl access with message
 	u := Data.Users[k]
-	role := c.MustGet("Role").(string)
+	role := c.Get("Role").(string)
 
 	userf := &UserForm{
 		UIDNumber:     u.UIDNumber,
@@ -92,18 +92,17 @@ func UserChgPasswd(c *gin.Context) {
 		if Lock != 0 {
 			warning = Tr(lang, "Data locked by admin.")
 		}
-		render(c, gin.H{
+		return render(c, echo.Map{
 			"title":       u.Name,
 			"currentPage": "profile",
 			"warning":     warning,
 			"u":           userf,
 			"groupdata":   Data.Groups},
 			"user/profile.tmpl")
-		return
 	}
 
-	pass1 := c.PostForm("inputPassword")
-	pass2 := c.PostForm("inputPassword2")
+	pass1 := c.Request().PostFormValue("inputPassword")
+	pass2 := c.Request().PostFormValue("inputPassword2")
 
 	// Validate entries
 	if pass1 == "" {
@@ -116,30 +115,27 @@ func UserChgPasswd(c *gin.Context) {
 		userf.Errors["Password2"] = Tr(lang, "Mandatory")
 	}
 	if len(userf.Errors) != 0 {
-		render(c, gin.H{"title": u.Name, "currentPage": "profile", "u": userf, "groupdata": Data.Groups}, "user/profile.tmpl")
-		return
+		return render(c, echo.Map{"title": u.Name, "currentPage": "profile", "u": userf, "groupdata": Data.Groups}, "user/profile.tmpl")
 	}
 	userf.Password = pass1
 
 	// Validate new password
 	if !userf.Validate(cfg.PassPolicy) {
-		render(c, gin.H{"title": u.Name, "currentPage": "profile", "u": userf, "groupdata": Data.Groups}, "user/profile.tmpl")
-		return
+		return render(c, echo.Map{"title": u.Name, "currentPage": "profile", "u": userf, "groupdata": Data.Groups}, "user/profile.tmpl")
 	}
 
 	(&Data.Users[k]).SetBcryptPass(pass1)
 	(&Data.Users[k]).PassSHA256 = "" // no more use of SHA256
 
-	username := c.MustGet("Login").(string)
-	Log.Info(fmt.Sprintf("%s -- %s password changed by %s", c.ClientIP(), u.Name, username))
+	username := c.Get("Login").(string)
+	Log.Info(fmt.Sprintf("%s -- %s password changed by %s", c.RealIP(), u.Name, username))
 
 	err := WriteDB(&cfg, Data, username)
 	if err != nil {
-		render(c, gin.H{"title": Tr(lang, "Error"), "currentPage": "profile", "error": err.Error()}, "home/error.tmpl")
-		return
+		return render(c, echo.Map{"title": Tr(lang, "Error"), "currentPage": "profile", "error": err.Error()}, "home/error.tmpl")
 	}
 
-	render(c, gin.H{
+	return render(c, echo.Map{
 		"title":       u.Name,
 		"currentPage": "profile",
 		"success":     Tr(lang, "Password updated"),
@@ -148,19 +144,19 @@ func UserChgPasswd(c *gin.Context) {
 		"user/profile.tmpl")
 }
 
-func UserChgOTP(c *gin.Context) {
-	cfg := c.MustGet("Cfg").(WebConfig)
+func UserChgOTP(c echo.Context) error {
+	cfg := c.Get("Cfg").(WebConfig)
 	lang := cfg.Locale.Lang
-	id := c.Params.ByName("id")
+	id := c.Param("id")
 
 	// Ctrl access
-	if !isSelfAccess(c, "UserChgOTP", id) {
-		return
+	if ok, err := isSelfAccess(c, "UserChgOTP", id); !ok {
+		return err
 	}
 
-	k := ctlUserExist(c, lang, id)
+	k, kerr := ctlUserExist(c, lang, id)
 	if k < 0 {
-		return
+		return kerr
 	}
 
 	// Ctrl access with message
@@ -194,7 +190,7 @@ func UserChgOTP(c *gin.Context) {
 		if Lock != 0 {
 			warning = Tr(lang, "Data locked by admin.")
 		}
-		render(c, gin.H{
+		return render(c, echo.Map{
 			"title":       u.Name,
 			"currentPage": "profile",
 			"warning":     warning,
@@ -202,39 +198,36 @@ func UserChgOTP(c *gin.Context) {
 			"u":           userf,
 			"groupdata":   Data.Groups},
 			"user/profile.tmpl")
-		return
 	}
 
-	otp := c.PostForm("inputOTPSecret")
+	otp := c.Request().PostFormValue("inputOTPSecret")
 	userf.OTPSecret = otp
 
 	// Validate new otpsecret or no change
 	if !userf.Validate(cfg.PassPolicy) || otp == (&Data.Users[k]).OTPSecret {
 		userf.OTPSecret = (&Data.Users[k]).OTPSecret
-		render(c, gin.H{"title": u.Name,
+		return render(c, echo.Map{"title": u.Name,
 			"currentPage": "profile",
 			"navotp":      true,
 			"u":           userf,
 			"groupdata":   Data.Groups}, "user/profile.tmpl")
-		return
 	}
 
 	(&Data.Users[k]).OTPSecret = userf.OTPSecret
 
-	username := c.MustGet("Login").(string)
-	Log.Info(fmt.Sprintf("%s -- %s otp secret changed by %s", c.ClientIP(), u.Name, username))
+	username := c.Get("Login").(string)
+	Log.Info(fmt.Sprintf("%s -- %s otp secret changed by %s", c.RealIP(), u.Name, username))
 
 	err := WriteDB(&cfg, Data, username)
 	if err != nil {
-		render(c, gin.H{"title": Tr(lang, "Error"), "currentPage": "profile", "error": err.Error()}, "home/error.tmpl")
-		return
+		return render(c, echo.Map{"title": Tr(lang, "Error"), "currentPage": "profile", "error": err.Error()}, "home/error.tmpl")
 	}
 
 	if userf.OTPSecret != "" {
 		userf.CreateOTPimg(cfg.AppName)
 	}
 
-	render(c, gin.H{
+	return render(c, echo.Map{
 		"title":       u.Name,
 		"currentPage": "profile",
 		"success":     Tr(lang, "OTP updated"),
@@ -244,19 +237,19 @@ func UserChgOTP(c *gin.Context) {
 		"user/profile.tmpl")
 }
 
-func UserPassApp(c *gin.Context) {
-	cfg := c.MustGet("Cfg").(WebConfig)
+func UserPassApp(c echo.Context) error {
+	cfg := c.Get("Cfg").(WebConfig)
 	lang := cfg.Locale.Lang
-	id := c.Params.ByName("id")
+	id := c.Param("id")
 
 	// Ctrl access
-	if !isSelfAccess(c, "UserPassApp", id) {
-		return
+	if ok, err := isSelfAccess(c, "UserPassApp", id); !ok {
+		return err
 	}
 
-	k := ctlUserExist(c, lang, id)
+	k, kerr := ctlUserExist(c, lang, id)
 	if k < 0 {
-		return
+		return kerr
 	}
 
 	// Ctrl access with message
@@ -290,7 +283,7 @@ func UserPassApp(c *gin.Context) {
 		if Lock != 0 {
 			warning = Tr(lang, "Data locked by admin.")
 		}
-		render(c, gin.H{
+		return render(c, echo.Map{
 			"title":       u.Name,
 			"currentPage": "profile",
 			"warning":     warning,
@@ -298,40 +291,38 @@ func UserPassApp(c *gin.Context) {
 			"u":           userf,
 			"groupdata":   Data.Groups},
 			"user/profile.tmpl")
-		return
 	}
 
 	// Read input
-	username := c.MustGet("Login").(string)
+	username := c.Get("Login").(string)
 
-	userf.NewPassApp = c.PostForm("inputNewPassApp")
+	userf.NewPassApp = c.Request().PostFormValue("inputNewPassApp")
 
 	change := false
 	// Remove pass app
 	for d := 0; d < 3; d++ {
 		input := fmt.Sprintf("inputDelPassApp%d", d)
-		delpass := c.PostForm(input)
+		delpass := c.Request().PostFormValue(input)
 		if delpass != "" {
 			(&Data.Users[k]).DelPassApp(d)
 			change = true
-			Log.Info(fmt.Sprintf("%s -- %s passapp removed %d by %s", c.ClientIP(), u.Name, d, username))
+			Log.Info(fmt.Sprintf("%s -- %s passapp removed %d by %s", c.RealIP(), u.Name, d, username))
 		}
 	}
 
 	// Validate and register newpass
 	if userf.NewPassApp != "" {
 		if !userf.Validate(cfg.PassPolicy) {
-			render(c, gin.H{"title": u.Name,
+			return render(c, echo.Map{"title": u.Name,
 				"currentPage": "profile",
 				"navotp":      true,
 				"u":           userf,
 				"groupdata":   Data.Groups}, "user/profile.tmpl")
-			return
 		}
 
 		(&Data.Users[k]).AddPassApp(userf.NewPassApp)
 		change = true
-		Log.Info(fmt.Sprintf("%s -- %s passapp added by %s", c.ClientIP(), u.Name, username))
+		Log.Info(fmt.Sprintf("%s -- %s passapp added by %s", c.RealIP(), u.Name, username))
 	}
 
 	if change {
@@ -340,11 +331,10 @@ func UserPassApp(c *gin.Context) {
 
 	err := WriteDB(&cfg, Data, username)
 	if err != nil {
-		render(c, gin.H{"title": Tr(lang, "Error"), "currentPage": "profile", "error": err.Error()}, "home/error.tmpl")
-		return
+		return render(c, echo.Map{"title": Tr(lang, "Error"), "currentPage": "profile", "error": err.Error()}, "home/error.tmpl")
 	}
 
-	render(c, gin.H{
+	return render(c, echo.Map{
 		"title":       u.Name,
 		"currentPage": "profile",
 		"success":     Tr(lang, "Tokens changed"),

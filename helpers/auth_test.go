@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 
 	. "glauth-ui-light/config"
@@ -52,7 +52,6 @@ func TestHelpersSession(t *testing.T) {
 
 	initUsersValues()
 	//fmt.Printf("%+v\n",Data)
-	gin.SetMode(gin.TestMode)
 	router := InitRouterTest(cfg)
 
 	router.GET("/auth/login", LoginTestHandlerForm)
@@ -96,7 +95,7 @@ func TestHelpersSession(t *testing.T) {
 	*/
 }
 
-func testCookieAccess(t *testing.T, router *gin.Engine, method string, url string, cookie []*http.Cookie) (*httptest.ResponseRecorder, string) {
+func testCookieAccess(t *testing.T, router *echo.Echo, method string, url string, cookie []*http.Cookie) (*httptest.ResponseRecorder, string) {
 	req, _ := http.NewRequest(method, url, nil)
 	if cookie != nil {
 		for _, c := range cookie {
@@ -123,7 +122,7 @@ func testCookieAccess(t *testing.T, router *gin.Engine, method string, url strin
 	return resp, url
 }
 
-func testCookieLogin(t *testing.T, router *gin.Engine, login string, pass string) (*httptest.ResponseRecorder, []*http.Cookie, string) {
+func testCookieLogin(t *testing.T, router *echo.Echo, login string, pass string) (*httptest.ResponseRecorder, []*http.Cookie, string) {
 	form := url.Values{}
 	form.Add("username", login)
 	form.Add("password", pass)

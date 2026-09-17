@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 
 	. "glauth-ui-light/config"
@@ -41,10 +41,9 @@ func TestLogin(t *testing.T) {
 	}
 
 	initUsersValues()
-	gin.SetMode(gin.TestMode)
 	router := InitRouterTest(cfg)
 
-	router.GET("/", func(c *gin.Context) { c.HTML(http.StatusOK, "home/index.tmpl", nil) })
+	router.GET("/", func(c echo.Context) error { return c.Render(http.StatusOK, "home/index.tmpl", nil) })
 
 	router.GET("/auth/login", LoginHandlerForm)
 	router.POST("/auth/login", LoginHandler)

@@ -3,18 +3,18 @@ package handlers
 import (
 	"fmt"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 
 	. "glauth-ui-light/config"
 	. "glauth-ui-light/helpers"
 )
 
-func CancelChanges(c *gin.Context) {
-	cfg := c.MustGet("Cfg").(WebConfig)
+func CancelChanges(c echo.Context) error {
+	cfg := c.Get("Cfg").(WebConfig)
 	lang := cfg.Locale.Lang
 
-	if !isAdminAccess(c, "CancelChanges", "-") {
-		return
+	if ok, err := isAdminAccess(c, "CancelChanges", "-"); !ok {
+		return err
 	}
 
 	if Lock != 0 {
@@ -23,7 +23,7 @@ func CancelChanges(c *gin.Context) {
 			Data = DataRead
 			Lock = 0
 			SetFlashCookie(c, "success", Tr(lang, "Changes canceled"))
-			Log.Info(fmt.Sprintf("%s -- [%s] changes canceled", c.ClientIP(), c.MustGet("Login").(string)))
+			Log.Info(fmt.Sprintf("%s -- [%s] changes canceled", c.RealIP(), c.Get("Login").(string)))
 		} else {
 			SetFlashCookie(c, "warning", err.Error())
 		}
@@ -31,24 +31,24 @@ func CancelChanges(c *gin.Context) {
 		SetFlashCookie(c, "warning", Tr(lang, "Nothing to cancel"))
 	}
 
-	c.Redirect(302, "/auth/crud/user")
+	return c.Redirect(302, "/auth/crud/user")
 }
 
-func SaveChanges(c *gin.Context) {
-	cfg := c.MustGet("Cfg").(WebConfig)
+func SaveChanges(c echo.Context) error {
+	cfg := c.Get("Cfg").(WebConfig)
 	lang := cfg.Locale.Lang
 
-	if !isAdminAccess(c, "SaveChanges", "-") {
-		return
+	if ok, err := isAdminAccess(c, "SaveChanges", "-"); !ok {
+		return err
 	}
 
 	if Lock != 0 {
-		username := c.MustGet("Login").(string)
+		username := c.Get("Login").(string)
 		err := WriteDB(&cfg, Data, username)
 		if err == nil {
 			Lock = 0
 			SetFlashCookie(c, "success", Tr(lang, "Changes saved"))
-			Log.Info(fmt.Sprintf("%s -- [%s] changes saved", c.ClientIP(), username))
+			Log.Info(fmt.Sprintf("%s -- [%s] changes saved", c.RealIP(), username))
 		} else {
 			SetFlashCookie(c, "warning", err.Error())
 		}
@@ -56,5 +56,5 @@ func SaveChanges(c *gin.Context) {
 		SetFlashCookie(c, "warning", Tr(lang, "Nothing to save"))
 	}
 
-	c.Redirect(302, "/auth/crud/user")
+	return c.Redirect(302, "/auth/crud/user")
 }

@@ -92,7 +92,7 @@ defaulthomedir = "/home"
 defaultloginshell = "/bin/false"
 
 [sec]
-  # TODO set random secrets for CSRF token
+  # obsolete: CSRF tokens are now random, this setting is no longer used
   csrfrandom = "secret1"
 
 [passpolicy]
@@ -271,6 +271,7 @@ main.go
     |-cookie.go   // cookies for session
     |-db.go       // read write data
     |-18n.go      // i18n
+    |-render.go   // html templates renderer
     |-sessions.go // manage session
 |-handler
     |-global.go   // global var, render

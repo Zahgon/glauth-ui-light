@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 
 	"encoding/base32"
 	"encoding/base64"
@@ -20,6 +20,9 @@ import (
 	. "glauth-ui-light/config"
 	. "glauth-ui-light/helpers"
 )
+
+// defaultMultipartMemory is the memory limit used to parse multipart forms.
+const defaultMultipartMemory = 32 << 20 // 32 MB
 
 // Validate entries
 
@@ -179,13 +182,12 @@ func strContains(s []string, e string) bool {
 
 // Helpers
 
-func ctlUserExist(c *gin.Context, lang string, id string) int {
+func ctlUserExist(c echo.Context, lang string, id string) (int, error) {
 	k := GetUserKey(id)
 	if k < 0 {
-		render(c, gin.H{"title": Tr(lang, "Error"), "currentPage": "user", "error": Tr(lang, "Unknown user")}, "home/error.tmpl")
-		return -1
+		return -1, render(c, echo.Map{"title": Tr(lang, "Error"), "currentPage": "user", "error": Tr(lang, "Unknown user")}, "home/error.tmpl")
 	}
-	return k
+	return k, nil
 }
 
 func GetUserKey(id string) int {
@@ -211,33 +213,33 @@ func GetUserByName(name string) (User, error) {
 
 // Handlers
 
-func UserList(c *gin.Context) {
-	cfg := c.MustGet("Cfg").(WebConfig)
+func UserList(c echo.Context) error {
+	cfg := c.Get("Cfg").(WebConfig)
 	lang := cfg.Locale.Lang
 
-	if !isAdminAccess(c, "UserList", "-") {
-		return
+	if ok, err := isAdminAccess(c, "UserList", "-"); !ok {
+		return err
 	}
 
 	hg := make(map[int]string)
 	for k := range Data.Groups {
 		hg[Data.Groups[k].GIDNumber] = Data.Groups[k].Name
 	}
-	render(c, gin.H{"title": Tr(lang, "Users page"), "currentPage": "user", "userdata": Data.Users, "hashgroups": hg}, "user/list.tmpl")
+	return render(c, echo.Map{"title": Tr(lang, "Users page"), "currentPage": "user", "userdata": Data.Users, "hashgroups": hg}, "user/list.tmpl")
 }
 
-func UserEdit(c *gin.Context) {
-	cfg := c.MustGet("Cfg").(WebConfig)
+func UserEdit(c echo.Context) error {
+	cfg := c.Get("Cfg").(WebConfig)
 	lang := cfg.Locale.Lang
-	id := c.Params.ByName("id")
+	id := c.Param("id")
 
-	if !isAdminAccess(c, "UserEdit", id) {
-		return
+	if ok, err := isAdminAccess(c, "UserEdit", id); !ok {
+		return err
 	}
 
-	k := ctlUserExist(c, lang, id)
+	k, err := ctlUserExist(c, lang, id)
 	if k < 0 {
-		return
+		return err
 	}
 
 	u := Data.Users[k]
@@ -262,33 +264,34 @@ func UserEdit(c *gin.Context) {
 		userf.CreateOTPimg(cfg.AppName)
 	}
 
-	render(c, gin.H{"title": Tr(lang, "Edit user"), "currentPage": "user", "u": userf, "groupdata": Data.Groups}, "user/edit.tmpl")
+	return render(c, echo.Map{"title": Tr(lang, "Edit user"), "currentPage": "user", "u": userf, "groupdata": Data.Groups}, "user/edit.tmpl")
 }
 
-func UserUpdate(c *gin.Context) {
-	cfg := c.MustGet("Cfg").(WebConfig)
+func UserUpdate(c echo.Context) error {
+	cfg := c.Get("Cfg").(WebConfig)
 	lang := cfg.Locale.Lang
-	id := c.Params.ByName("id")
+	id := c.Param("id")
 
-	if !isAdminAccess(c, "UserUpdate", id) {
-		return
+	if ok, err := isAdminAccess(c, "UserUpdate", id); !ok {
+		return err
 	}
 
-	k := ctlUserExist(c, lang, id)
+	k, kerr := ctlUserExist(c, lang, id)
 	if k < 0 {
-		return
+		return kerr
 	}
 
 	// Convert string to right format
 	var err error
 	var pg int
 
-	if c.PostForm("inputGroup") != "" {
-		pg, err = strconv.Atoi(c.PostForm("inputGroup"))
+	if c.Request().PostFormValue("inputGroup") != "" {
+		pg, err = strconv.Atoi(c.Request().PostFormValue("inputGroup"))
 	}
-	ogStr := c.PostFormArray("inputOtherGroup")
+	_ = c.Request().ParseMultipartForm(defaultMultipartMemory)
+	ogStr := c.Request().PostForm["inputOtherGroup"]
 	d := false
-	if c.PostForm("inputDisabled") == "on" {
+	if c.Request().PostFormValue("inputDisabled") == "on" {
 		d = true
 	}
 	og := []int{}
@@ -300,22 +303,21 @@ func UserUpdate(c *gin.Context) {
 		og = append(og, i)
 	}
 	if err != nil {
-		render(c, gin.H{"title": Tr(lang, "Error"), "currentPage": "user", "error": err.Error()}, "home/error.tmpl")
-		return
+		return render(c, echo.Map{"title": Tr(lang, "Error"), "currentPage": "user", "error": err.Error()}, "home/error.tmpl")
 	}
 
 	// Bind form to struct
 	userf := &UserForm{
 		UIDNumber:     Data.Users[k].UIDNumber,
-		Mail:          c.PostForm("inputMail"),
-		Name:          c.PostForm("inputName"),
-		Homedir:       c.PostForm("inputHomedir"),
-		LoginShell:    c.PostForm("inputLoginShell"),
-		SN:            c.PostForm("inputSN"),
-		GivenName:     c.PostForm("inputGivenName"),
-		Password:      c.PostForm("inputPassword"),
-		OTPSecret:     c.PostForm("inputOTPSecret"),
-		NewPassApp:    c.PostForm("inputNewPassApp"),
+		Mail:          c.Request().PostFormValue("inputMail"),
+		Name:          c.Request().PostFormValue("inputName"),
+		Homedir:       c.Request().PostFormValue("inputHomedir"),
+		LoginShell:    c.Request().PostFormValue("inputLoginShell"),
+		SN:            c.Request().PostFormValue("inputSN"),
+		GivenName:     c.Request().PostFormValue("inputGivenName"),
+		Password:      c.Request().PostFormValue("inputPassword"),
+		OTPSecret:     c.Request().PostFormValue("inputOTPSecret"),
+		NewPassApp:    c.Request().PostFormValue("inputNewPassApp"),
 		PassAppBcrypt: Data.Users[k].PassAppBcrypt,
 		PrimaryGroup:  pg,
 		OtherGroups:   og,
@@ -329,8 +331,7 @@ func UserUpdate(c *gin.Context) {
 
 	// Validate entries
 	if !userf.Validate(cfg.PassPolicy) {
-		render(c, gin.H{"title": Tr(lang, "Edit user"), "currentPage": "user", "u": userf, "groupdata": Data.Groups}, "user/edit.tmpl")
-		return
+		return render(c, echo.Map{"title": Tr(lang, "Edit user"), "currentPage": "user", "u": userf, "groupdata": Data.Groups}, "user/edit.tmpl")
 	}
 
 	// Update Data
@@ -352,7 +353,7 @@ func UserUpdate(c *gin.Context) {
 
 	for d := 0; d < 3; d++ {
 		input := fmt.Sprintf("inputDelPassApp%d", d)
-		delpass := c.PostForm(input)
+		delpass := c.Request().PostFormValue(input)
 		if delpass != "" {
 			(&Data.Users[k]).DelPassApp(d)
 		}
@@ -364,9 +365,9 @@ func UserUpdate(c *gin.Context) {
 
 	Lock++
 
-	Log.Info(fmt.Sprintf("%s -- %s updated by %s", c.ClientIP(), userf.Name, c.MustGet("Login").(string)))
+	Log.Info(fmt.Sprintf("%s -- %s updated by %s", c.RealIP(), userf.Name, c.Get("Login").(string)))
 
-	render(c, gin.H{
+	return render(c, echo.Map{
 		"title":       Tr(lang, "Edit user"),
 		"currentPage": "user",
 		"success":     "«" + userf.Name + "» updated",
@@ -375,34 +376,33 @@ func UserUpdate(c *gin.Context) {
 		"user/edit.tmpl")
 }
 
-func UserAdd(c *gin.Context) {
-	cfg := c.MustGet("Cfg").(WebConfig)
+func UserAdd(c echo.Context) error {
+	cfg := c.Get("Cfg").(WebConfig)
 	lang := cfg.Locale.Lang
 
-	if !isAdminAccess(c, "UserAdd", "-") {
-		return
+	if ok, err := isAdminAccess(c, "UserAdd", "-"); !ok {
+		return err
 	}
 
-	render(c, gin.H{"title": Tr(lang, "Add user"), "currentPage": "user"}, "user/create.tmpl")
+	return render(c, echo.Map{"title": Tr(lang, "Add user"), "currentPage": "user"}, "user/create.tmpl")
 }
 
-func UserCreate(c *gin.Context) {
-	cfg := c.MustGet("Cfg").(WebConfig)
+func UserCreate(c echo.Context) error {
+	cfg := c.Get("Cfg").(WebConfig)
 	lang := cfg.Locale.Lang
 
-	if !isAdminAccess(c, "UserCreate", "-") {
-		return
+	if ok, err := isAdminAccess(c, "UserCreate", "-"); !ok {
+		return err
 	}
 
 	// Bind form to struct
 	userf := &UserForm{
-		Name: c.PostForm("inputName"),
+		Name: c.Request().PostFormValue("inputName"),
 		Lang: lang,
 	}
 	// Validate entries
 	if !userf.Validate(cfg.PassPolicy) {
-		render(c, gin.H{"title": Tr(lang, "Add user"), "currentPage": "user", "u": userf, "groupdata": Data.Groups}, "user/create.tmpl")
-		return
+		return render(c, echo.Map{"title": Tr(lang, "Add user"), "currentPage": "user", "u": userf, "groupdata": Data.Groups}, "user/create.tmpl")
 	}
 
 	// Create new id
@@ -419,24 +419,24 @@ func UserCreate(c *gin.Context) {
 
 	Lock++
 
-	Log.Info(fmt.Sprintf("%s -- %s created by %s", c.ClientIP(), newUser.Name, c.MustGet("Login").(string)))
+	Log.Info(fmt.Sprintf("%s -- %s created by %s", c.RealIP(), newUser.Name, c.Get("Login").(string)))
 
 	SetFlashCookie(c, "success", "«"+newUser.Name+"» added")
-	c.Redirect(302, fmt.Sprintf("/auth/crud/user/%d", newUser.UIDNumber))
+	return c.Redirect(302, fmt.Sprintf("/auth/crud/user/%d", newUser.UIDNumber))
 }
 
-func UserDel(c *gin.Context) {
-	cfg := c.MustGet("Cfg").(WebConfig)
+func UserDel(c echo.Context) error {
+	cfg := c.Get("Cfg").(WebConfig)
 	lang := cfg.Locale.Lang
-	id := c.Params.ByName("id")
+	id := c.Param("id")
 
-	if !isAdminAccess(c, "UserDel", id) {
-		return
+	if ok, err := isAdminAccess(c, "UserDel", id); !ok {
+		return err
 	}
 
-	k := ctlUserExist(c, lang, id)
+	k, err := ctlUserExist(c, lang, id)
 	if k < 0 {
-		return
+		return err
 	}
 
 	deletedUser := Data.Users[k]
@@ -445,8 +445,8 @@ func UserDel(c *gin.Context) {
 
 	Lock++
 
-	Log.Info(fmt.Sprintf("%s -- %s deleted by %s", c.ClientIP(), deletedUser.Name, c.MustGet("Login").(string)))
+	Log.Info(fmt.Sprintf("%s -- %s deleted by %s", c.RealIP(), deletedUser.Name, c.Get("Login").(string)))
 
 	SetFlashCookie(c, "success", "«"+deletedUser.Name+"» deleted")
-	c.Redirect(302, "/auth/crud/user")
+	return c.Redirect(302, "/auth/crud/user")
 }

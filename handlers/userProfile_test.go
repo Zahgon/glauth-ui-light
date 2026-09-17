@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 
 	. "glauth-ui-light/config"
@@ -45,7 +45,6 @@ func TestUserChgPass(t *testing.T) {
 
 	defer clean(cfg.DBfile)
 
-	gin.SetMode(gin.TestMode)
 	initUsersValues()
 
 	Lock = 0
@@ -89,10 +88,12 @@ func TestUserChgPass(t *testing.T) {
 	// Admin access
 	u := InitRouterTest(cfg)
 	u.Use(SetUserTest("user1", "5000", "admin"))
-	u.Use(func(c *gin.Context) {
-		c.Set("CanChgPass", true)
-		c.Set("UseOtp", true)
-		c.Next()
+	u.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			c.Set("CanChgPass", true)
+			c.Set("UseOtp", true)
+			return next(c)
+		}
 	})
 	u.GET("/user/:id", UserProfile)
 	u.POST("/user/:id", UserChgPasswd)
@@ -191,7 +192,6 @@ func TestUserChgOTP(t *testing.T) {
 
 	defer clean(cfg.DBfile)
 
-	gin.SetMode(gin.TestMode)
 	initUsersValues()
 
 	Lock = 0
@@ -234,10 +234,12 @@ func TestUserChgOTP(t *testing.T) {
 	// Admin access
 	u := InitRouterTest(cfg)
 	u.Use(SetUserTest("user1", "5000", "admin"))
-	u.Use(func(c *gin.Context) {
-		c.Set("CanChgPass", true)
-		c.Set("UseOtp", true)
-		c.Next()
+	u.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			c.Set("CanChgPass", true)
+			c.Set("UseOtp", true)
+			return next(c)
+		}
 	})
 	u.GET("/user/:id", UserProfile)
 	u.POST("/user/otp/:id", UserChgOTP)
@@ -330,7 +332,6 @@ func TestUserPassApp(t *testing.T) {
 
 	defer clean(cfg.DBfile)
 
-	gin.SetMode(gin.TestMode)
 	initUsersValues()
 
 	// TEST errors
@@ -371,10 +372,12 @@ func TestUserPassApp(t *testing.T) {
 	// Admin access
 	u := InitRouterTest(cfg)
 	u.Use(SetUserTest("user1", "5000", "admin"))
-	u.Use(func(c *gin.Context) {
-		c.Set("CanChgPass", true)
-		c.Set("UseOtp", true)
-		c.Next()
+	u.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			c.Set("CanChgPass", true)
+			c.Set("UseOtp", true)
+			return next(c)
+		}
 	})
 	u.GET("/user/:id", UserProfile)
 	u.POST("/user/passapp/:id", UserPassApp)

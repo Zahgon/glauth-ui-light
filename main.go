@@ -13,7 +13,6 @@ import (
 
 	"github.com/hydronica/toml"
 
-	"github.com/gin-gonic/gin"
 	rotatelogs "github.com/lestrrat-go/file-rotatelogs"
 	"github.com/sirupsen/logrus"
 	easy "github.com/t-tomalak/logrus-easy-formatter"
@@ -33,8 +32,6 @@ func confLog(cfg *WebConfig) {
 
 	if debug {
 		level = logrus.DebugLevel
-	} else {
-		gin.SetMode(gin.ReleaseMode)
 	}
 
 	log = &logrus.Logger{
@@ -55,7 +52,7 @@ func confLog(cfg *WebConfig) {
 			rotatelogs.WithRotationCount(cfg.Logs.RotationCount),
 		)
 		log.SetOutput(writer)
-		gin.DefaultWriter = io.MultiWriter(writer)
+		routes.DefaultWriter = io.MultiWriter(writer)
 	}
 }
 
@@ -89,8 +86,6 @@ func main() {
 		fmt.Print(string(b))
 		fmt.Println("")
 		cfg.Debug = true
-	} else {
-		gin.SetMode(gin.ReleaseMode)
 	}
 
 	confLog(&cfg)
@@ -103,11 +98,11 @@ func main() {
 	r := routes.SetRoutes(&cfg)
 
 	if cfg.SSL.Crt != "" {
-		err = r.RunTLS(cfg.Port, cfg.SSL.Crt, cfg.SSL.Key)
+		err = r.StartTLS(cfg.Port, cfg.SSL.Crt, cfg.SSL.Key)
 	} else {
 		fmt.Println("Server started. Version: " + handlers.Version)
 		log.Println("Server started. Version: " + handlers.Version)
-		err = r.Run(cfg.Port)
+		err = r.Start(cfg.Port)
 	}
 	if err != nil {
 		fmt.Println("Error: " + err.Error())

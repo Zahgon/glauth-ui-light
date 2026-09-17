@@ -14,8 +14,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/kataras/i18n"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/stretchr/testify/assert"
 
 	. "glauth-ui-light/config"
@@ -31,7 +32,7 @@ func resetData() {
 }
 
 // testAccessSimple : access without cookie
-func testAccessSimple(t *testing.T, router *gin.Engine, method string, url string) (*httptest.ResponseRecorder, string) {
+func testAccessSimple(t *testing.T, router *echo.Echo, method string, url string) (*httptest.ResponseRecorder, string) {
 	req, _ := http.NewRequest(method, url, nil)
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
@@ -54,7 +55,7 @@ func testAccessSimple(t *testing.T, router *gin.Engine, method string, url strin
 }
 
 // testAccess with cookie from login
-func testAccess(t *testing.T, router *gin.Engine, method string, testurl string) (*httptest.ResponseRecorder, string) {
+func testAccess(t *testing.T, router *echo.Echo, method string, testurl string) (*httptest.ResponseRecorder, string) {
 	req, _ := http.NewRequest(method, testurl, nil)
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
@@ -71,7 +72,7 @@ func testAccess(t *testing.T, router *gin.Engine, method string, testurl string)
 }
 
 // testLogin
-func testLogin(t *testing.T, router *gin.Engine, login string, pass string) *httptest.ResponseRecorder {
+func testLogin(t *testing.T, router *echo.Echo, login string, pass string) *httptest.ResponseRecorder {
 	form := url.Values{}
 	form.Add("username", login)
 	form.Add("password", pass)
@@ -105,26 +106,32 @@ func testLogin(t *testing.T, router *gin.Engine, login string, pass string) *htt
 
 // mock routes function
 
-func setConfigTest(cfg WebConfig) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Set("Cfg", cfg)
-		c.Next()
+func setConfigTest(cfg WebConfig) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			c.Set("Cfg", cfg)
+			return next(c)
+		}
 	}
 }
 
-func SetUserTest(login string, loginID string, role string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Set("Login", login)
-		c.Set("LoginID", loginID)
-		c.Set("Role", role)
-		c.Next()
+func SetUserTest(login string, loginID string, role string) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			c.Set("Login", login)
+			c.Set("LoginID", loginID)
+			c.Set("Role", role)
+			return next(c)
+		}
 	}
 }
 
-func InitRouterTest(cfg WebConfig) *gin.Engine {
-	r := gin.New()
-	r.Use(gin.Logger())
-	r.Use(gin.Recovery())
+func InitRouterTest(cfg WebConfig) *echo.Echo {
+	r := echo.New()
+	r.HideBanner = true
+	r.HidePort = true
+	r.Use(middleware.Logger())
+	r.Use(middleware.Recover())
 	basePath := cfg.Locale.Path
 
 	r.Use(MiddlewareSession(false))
@@ -137,13 +144,11 @@ func InitRouterTest(cfg WebConfig) *gin.Engine {
 
 	translateLangFunc := func(x string) string { return Tr(cfg.Locale.Lang, x) }
 
-	r.SetFuncMap(template.FuncMap{
-		"tr": translateLangFunc,
-	})
-	r.LoadHTMLGlob("../routes/web/templates/**/*.tmpl")
+	templ := template.Must(template.New("").Funcs(template.FuncMap{"tr": translateLangFunc}).ParseGlob("../routes/web/templates/**/*.tmpl"))
+	r.Renderer = &TemplateRenderer{Templates: templ}
 
-	r.GET("/", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "home/index.tmpl", gin.H{"appname": cfg.AppName, "appdesc": cfg.AppDesc})
+	r.GET("/", func(c echo.Context) error {
+		return c.Render(http.StatusOK, "home/index.tmpl", echo.Map{"appname": cfg.AppName, "appdesc": cfg.AppDesc})
 	})
 	r.Static("/css", basePath+"/web/assets/css")
 	r.Static("/fonts", basePath+"/web/assets/fonts")

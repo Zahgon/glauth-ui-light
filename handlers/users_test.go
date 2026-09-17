@@ -12,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 
 	. "glauth-ui-light/config"
@@ -182,7 +181,6 @@ func TestUserHandlers(t *testing.T) {
 		},
 	}
 
-	gin.SetMode(gin.TestMode)
 	router := InitRouterTest(cfg)
 
 	var Url = "/auth/crud/user"

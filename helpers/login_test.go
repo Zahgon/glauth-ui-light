@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 
 	"glauth-ui-light/config"
 )
@@ -18,11 +18,11 @@ func GetUserByName(name string) (config.User, error) {
 	return config.User{}, fmt.Errorf("unknown user")
 }
 
-func LoginTestHandlerForm(c *gin.Context) {
-	cfg := c.MustGet("Cfg").(config.WebConfig)
+func LoginTestHandlerForm(c echo.Context) error {
+	cfg := c.Get("Cfg").(config.WebConfig)
 	userName, userId := GetUserID(c)
 
-	c.HTML(200, "home/login.tmpl", gin.H{
+	return c.Render(200, "home/login.tmpl", echo.Map{
 		"userName":    userName,
 		"userId":      userId,
 		"currentPage": "login",
@@ -32,16 +32,16 @@ func LoginTestHandlerForm(c *gin.Context) {
 	})
 }
 
-func LoginTestHandler(c *gin.Context) {
-	cfg := c.MustGet("Cfg").(config.WebConfig)
+func LoginTestHandler(c echo.Context) error {
+	cfg := c.Get("Cfg").(config.WebConfig)
 	fmt.Println(" - POST /login")
 	lang := cfg.Locale.Lang
 
 	s := GetSession(c)
 	s = FailLimiter(s, 30) // lock 30s after 4 failed logins
 
-	username := c.PostForm("username")
-	password := c.PostForm("password")
+	username := c.Request().PostFormValue("username")
+	password := c.Request().PostFormValue("password")
 
 	switch {
 	case s.Lock: // == true
@@ -50,7 +50,7 @@ func LoginTestHandler(c *gin.Context) {
 		SetSession(c, s.ToJSONStr())
 		fmt.Println(" - Lock Status for ", username)
 		SetFlashCookie(c, "error", Tr(lang, "Too many errors, come back later"))
-		c.Redirect(302, "/auth/login")
+		return c.Redirect(302, "/auth/login")
 	case username != "" && password != "":
 		valid := false
 		u, err := GetUserByName(username)
@@ -72,26 +72,26 @@ func LoginTestHandler(c *gin.Context) {
 			s.Count = 0
 
 			SetSession(c, s.ToJSONStr())
-			c.Redirect(302, "/user/"+tmpid)
+			return c.Redirect(302, "/user/"+tmpid)
 		} else {
 			fmt.Println(" - AUTHENTICATION failed for ", username)
 			s.User = username
 			s.UserID = ""
 			SetSession(c, s.ToJSONStr())
 			SetFlashCookie(c, "warning", Tr(lang, "Bad credentials"))
-			c.Redirect(302, "/auth/login")
+			return c.Redirect(302, "/auth/login")
 		}
 	default:
 		fmt.Println(" - Bad Post params")
-		c.HTML(404, "home/login.tmpl", nil)
+		return c.Render(404, "home/login.tmpl", nil)
 	}
 }
 
-func LogoutTestHandler(c *gin.Context) {
-	cfg := c.MustGet("Cfg").(config.WebConfig)
+func LogoutTestHandler(c echo.Context) error {
+	cfg := c.Get("Cfg").(config.WebConfig)
 	lang := cfg.Locale.Lang
 
 	ClearSession(c)
 	SetFlashCookie(c, "success", Tr(lang, "You are disconnected"))
-	c.Redirect(302, "/")
+	return c.Redirect(302, "/")
 }

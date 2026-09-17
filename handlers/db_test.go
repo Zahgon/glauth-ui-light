@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 
 	. "glauth-ui-light/config"
@@ -38,7 +37,6 @@ func TestDB(t *testing.T) {
 	defer clean(cfg.DBfile)
 
 	initUsersValues()
-	gin.SetMode(gin.TestMode)
 	router := InitRouterTest(cfg)
 
 	Url := "/auth/crud"

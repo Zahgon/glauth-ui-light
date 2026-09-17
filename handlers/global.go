@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 	"github.com/sirupsen/logrus"
 
 	. "glauth-ui-light/config"
@@ -19,60 +19,56 @@ var (
 
 var Log logrus.Logger
 
-func isAdminAccess(c *gin.Context, ressource string, id string) bool {
-	login := c.MustGet("Login").(string)
-	loginid := c.MustGet("LoginID").(string)
-	role := c.MustGet("Role").(string)
+func isAdminAccess(c echo.Context, ressource string, id string) (bool, error) {
+	login := c.Get("Login").(string)
+	loginid := c.Get("LoginID").(string)
+	role := c.Get("Role").(string)
 	// admin access
 	if role != "admin" {
 		Log.Info(fmt.Sprintf("-- [%s] (%s) denied admin access to %s : %s", login, loginid, ressource, id))
-		c.Redirect(302, "/auth/logout")
-		c.Abort()
-		return false
+		return false, c.Redirect(302, "/auth/logout")
 	}
-	return true
+	return true, nil
 }
 
-func isSelfAccess(c *gin.Context, ressource string, id string) bool {
-	login := c.MustGet("Login").(string)
-	loginid := c.MustGet("LoginID").(string)
-	role := c.MustGet("Role").(string)
+func isSelfAccess(c echo.Context, ressource string, id string) (bool, error) {
+	login := c.Get("Login").(string)
+	loginid := c.Get("LoginID").(string)
+	role := c.Get("Role").(string)
 
 	// Self access
 	if role != "admin" && loginid != id {
 		Log.Info(fmt.Sprintf("-- [%s] (%s) denied self access to %s : %s", login, loginid, ressource, id))
-		c.Redirect(302, "/auth/logout")
-		c.Abort()
-		return false
+		return false, c.Redirect(302, "/auth/logout")
 	}
-	return true
+	return true, nil
 }
 
-func render(c *gin.Context, data gin.H, templateName string) {
+func render(c echo.Context, data echo.Map, templateName string) error {
 	// Set user
-	role, _ := c.Get("Role")
+	role := c.Get("Role")
 	data["userName"], data["userId"] = helpers.GetUserID(c)
 	if role != nil && role.(string) == "admin" {
 		data["roleAdmin"] = true
 	}
 
 	// Set CSRF token in forms
-	data["Csrf"], _ = c.Get("Csrf")
+	data["Csrf"] = c.Get("Csrf")
 
 	// Set view elements
 	data["lock"] = Lock
 	data["version"] = Version
-	data["appname"], _ = c.Get("AppName")
-	data["MaskOTP"], _ = c.Get("MaskOTP")
-	data["DefaultHomedir"], _ = c.Get("DefaultHomedir")
-	data["DefaultLoginShell"], _ = c.Get("DefaultLoginShell")
+	data["appname"] = c.Get("AppName")
+	data["MaskOTP"] = c.Get("MaskOTP")
+	data["DefaultHomedir"] = c.Get("DefaultHomedir")
+	data["DefaultLoginShell"] = c.Get("DefaultLoginShell")
 
-	canChgPass, _ := c.Get("CanChgPass")
+	canChgPass := c.Get("CanChgPass")
 	if canChgPass != nil {
 		data["canChgPass"] = canChgPass.(bool)
 	}
 
-	useOtp, _ := c.Get("UseOtp")
+	useOtp := c.Get("UseOtp")
 	if useOtp != nil {
 		data["useOtp"] = useOtp.(bool)
 	}
@@ -89,9 +85,9 @@ func render(c *gin.Context, data gin.H, templateName string) {
 		data["error"] = helpers.GetFlashCookie(c, "error")
 	}
 
-	c.HTML(http.StatusOK, templateName, data)
+	return c.Render(http.StatusOK, templateName, data)
 
-	/*switch c.Request.Header.Get("Accept") {
+	/*switch c.Request().Header.Get("Accept") {
 	case "application/json":
 	          // Respond with JSON
 	          c.JSON(http.StatusOK, data["payload"])
@@ -100,6 +96,6 @@ func render(c *gin.Context, data gin.H, templateName string) {
 	          c.XML(http.StatusOK, data["payload"])
 	default:
 		// Respond with HTML
-		c.HTML(http.StatusOK, templateName, data)
+		c.Render(http.StatusOK, templateName, data)
 	}*/
 }

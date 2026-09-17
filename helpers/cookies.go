@@ -4,10 +4,9 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
 
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
+	"github.com/gorilla/sessions"
 
 	"github.com/gorilla/securecookie"
 )
@@ -16,42 +15,68 @@ var blockKey = securecookie.GenerateRandomKey(32)
 
 var CookieSessionName = "appsession"
 
-func SetSession(c *gin.Context, status string) {
-	session := sessions.Default(c)
-	session.Set("status", status)
-	session.Save() //nolint:errcheck // no session
+// sessionCtxKey is the context key used to store the session store.
+const sessionCtxKey = "github.com/gorilla/sessions"
+
+// sessionCtx keeps the store and the name of the session used by the request.
+type sessionCtx struct {
+	name  string
+	store sessions.Store
 }
 
-func MiddlewareSession(secure bool) gin.HandlerFunc {
-	// store := cookie.NewStore([]byte(secret))
-	store := cookie.NewStore(blockKey)
-	store.Options(sessions.Options{
+func SetSession(c echo.Context, status string) {
+	session := defaultSession(c)
+	session.Values["status"] = status
+	session.Save(c.Request(), c.Response()) //nolint:errcheck // no session
+}
+
+// Sessions registers the session store for the request.
+func Sessions(name string, store sessions.Store) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			c.Set(sessionCtxKey, &sessionCtx{name: name, store: store})
+			return next(c)
+		}
+	}
+}
+
+func MiddlewareSession(secure bool) echo.MiddlewareFunc {
+	// store := sessions.NewCookieStore([]byte(secret))
+	store := sessions.NewCookieStore(blockKey)
+	store.Options = &sessions.Options{
 		//Domain:   "localhost",
 		Path:     "/auth/",
 		HttpOnly: true,
 		Secure:   secure,
 		MaxAge:   3600,
 		SameSite: http.SameSiteStrictMode,
-	})
-	return sessions.Sessions(CookieSessionName, store)
+	}
+	return Sessions(CookieSessionName, store)
 }
 
-func GetUserID(c *gin.Context) (userName string, userId string) {
+// defaultSession returns the session of the request.
+func defaultSession(c echo.Context) *sessions.Session {
+	s := c.Get(sessionCtxKey).(*sessionCtx)
+	session, _ := s.store.Get(c.Request(), s.name)
+	return session
+}
+
+func GetUserID(c echo.Context) (userName string, userId string) {
 	s := GetSession(c)
 	return s.User, s.UserID
 }
 
-func GetSession(c *gin.Context) Status {
-	session := sessions.Default(c)
+func GetSession(c echo.Context) Status {
+	session := defaultSession(c)
 	var s = Status{}
-	t := session.Get("status")
+	t := session.Values["status"]
 	if t != nil {
 		s = StrToStatus(t.(string))
 	}
 	return s
 }
 
-func ClearSession(c *gin.Context) {
+func ClearSession(c echo.Context) {
 	cookie := &http.Cookie{
 		Name:   CookieSessionName,
 		Value:  "",
@@ -59,7 +84,7 @@ func ClearSession(c *gin.Context) {
 		MaxAge: -1,
 	}
 
-	http.SetCookie(c.Writer, cookie)
+	http.SetCookie(c.Response(), cookie)
 }
 
 // Encodage de la valeur du cookie.
@@ -74,7 +99,7 @@ func decode(value string) string {
 	return decode
 }
 
-func SetFlashCookie(c *gin.Context, name string, value string) {
+func SetFlashCookie(c echo.Context, name string, value string) {
 	cookie := &http.Cookie{
 		Name:     name,
 		Value:    encode(value),
@@ -83,11 +108,11 @@ func SetFlashCookie(c *gin.Context, name string, value string) {
 		MaxAge:   1,
 	}
 
-	http.SetCookie(c.Writer, cookie)
+	http.SetCookie(c.Response(), cookie)
 }
 
-func GetFlashCookie(c *gin.Context, name string) (value string) {
-	cookie, err := c.Request.Cookie(name)
+func GetFlashCookie(c echo.Context, name string) (value string) {
+	cookie, err := c.Request().Cookie(name)
 
 	var cookieValue string
 	if err == nil {
